@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/*
+  Shared visual tokens for the security-console interface.
+*/
+@theme {
+  --font-display: "Inter", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --color-bg: #0b1014;
+  --color-panel: #11181e;
+  --color-panel-2: #162027;
+  --color-line: rgba(184, 205, 217, 0.14);
+  --color-line-soft: rgba(184, 205, 217, 0.08);
+
+  --color-ink: #d4dce8;
+  --color-ink-dim: #7a8a9c;
+  --color-ink-faint: #3a4858;
+
+  --color-accent: #5bd6bd;
+  --color-accent-dim: #17483f;
+  --color-amber: #c9981a;
+  --color-red: #e05555;
+  --color-blue: #4a8cc4;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg);
+  background-image: linear-gradient(135deg, rgba(91, 214, 189, 0.035), transparent 34%), linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(0, 196, 154, 0.25);
+  color: #fff;
+}
+
+html, body, #root, * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 196, 154, 0.38);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 7px; height: 7px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(0, 196, 154, 0.35); }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  animation: fade-up 0.2s ease-out both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.trow {
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.trow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.trow.selected {
+  background: rgba(91, 214, 189, 0.11) !important;
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+tr.trow td {
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.btn-accent:hover {
+  background: rgba(91, 214, 189, 0.24);
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid rgba(91, 214, 189, 0.7);
+  outline-offset: 1px;
+}
+
+table { border-spacing: 0; }
+th, td { border-collapse: collapse; }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .pulse-dot { animation: none !important; }
+}
+
