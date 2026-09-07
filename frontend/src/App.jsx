@@ -1,5 +1,4 @@
-```jsx
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { C } from "./theme";
 import Splash from "./components/Splash";
 import { api } from "./api";
@@ -29,51 +28,57 @@ function Page({ id, ctx }) {
   switch (id) {
     case "dashboard":
       return <DashboardPage ctx={ctx} />;
+
     case "targets":
       return <TargetsPage ctx={ctx} />;
+
     case "http":
       return <HttpPage ctx={ctx} />;
+
     case "endpoints":
       return <EndpointsPage ctx={ctx} />;
+
     case "javascript":
       return <JavaScriptPage ctx={ctx} />;
+
     case "sqli":
       return <SqliPage ctx={ctx} />;
+
     case "findings":
       return <FindingsPage ctx={ctx} />;
+
     case "reports":
       return <ReportsPage ctx={ctx} />;
+
     default:
       return <DashboardPage ctx={ctx} />;
   }
 }
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
-  const dismissSplash = useCallback(() => setShowSplash(false), []);
+  // ------------------------------------------------------------
+  // APPLICATION STATE
+  // ------------------------------------------------------------
 
+  const [showSplash, setShowSplash] = useState(true);
   const [tab, setTab] = useState("dashboard");
+
   const [targets, setTargets] = useState([]);
   const [activeId, setActiveId] = useState(null);
+
   const [findings, setFindings] = useState([]);
+  const [autoFindings, setAutoFindings] = useState([]);
+
   const [findingSeed, setFindingSeed] = useState(null);
   const [sqliSeed, setSqliSeed] = useState(null);
 
   const [scanData, setScanDataState] = useState({});
-  // { [targetId]: {
-  //   http,
-  //   endpoints,
-  //   js,
-  //   collection,
-  //   sqliHistory,
-  //   sqliAdvancedResult,
-  //   sqliAdvancedStages,
-  //   fullScanSqli
-  // } }
 
   const [scanProgress, setScanProgress] = useState([]);
   const [fullScanRunning, setFullScanRunning] = useState(false);
+
   const [log, setLog] = useState([]);
+
   const [apiDown, setApiDown] = useState(false);
   const [totalScans, setTotalScans] = useState(0);
 
@@ -88,89 +93,134 @@ export default function App() {
 
   const [startedAt] = useState(() => Date.now());
 
-  useEffect(() => {
-    const t = setInterval(
-      () =>
-        setTime(
-          new Date().toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-          })
-        ),
-      1000
-    );
+  // ------------------------------------------------------------
+  // SPLASH
+  // ------------------------------------------------------------
 
-    return () => clearInterval(t);
+  const dismissSplash = useCallback(() => {
+    setShowSplash(false);
   }, []);
 
-  const pushLog = useCallback((level, msg) => {
-    const t = new Date().toLocaleTimeString("en-GB", {
+  // ------------------------------------------------------------
+  // CLOCK
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(
+        new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        })
+      );
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+
+  // ------------------------------------------------------------
+  // ACTIVITY LOGGER
+  // ------------------------------------------------------------
+
+  const pushLog = useCallback((level, message) => {
+    const timestamp = new Date().toLocaleTimeString("en-GB", {
       hour12: false,
     });
 
-    setLog((prev) => [
-      ...prev.slice(-300),
+    setLog((previous) => [
+      ...previous.slice(-300),
       {
         level,
-        msg,
-        time: t,
+        msg: message,
+        time: timestamp,
       },
     ]);
   }, []);
 
-  /*
-   * Refresh targets from the production API.
-   *
-   * api.js is configured to use:
-   * https://pentiii.onrender.com
-   *
-   * If the request fails, keep the UI alive and expose the
-   * actual error in the browser console and activity log.
-   */
+  // ------------------------------------------------------------
+  // TARGETS
+  // ------------------------------------------------------------
+
   const refreshTargets = useCallback(async () => {
     try {
       const rows = await api.listTargets();
 
-      setTargets(rows);
+      const safeRows = Array.isArray(rows) ? rows : [];
+
+      setTargets(safeRows);
       setApiDown(false);
 
-      return rows;
+      return safeRows;
     } catch (error) {
       console.error("Pent III API error:", error);
 
       setApiDown(true);
 
+      const message =
+        error && error.message
+          ? error.message
+          : "Unable to reach the backend";
+
       pushLog(
         "fail",
-        `API connection error: ${
-          error?.message || "Unable to reach the backend"
-        }`
+        "API connection error: " + message
       );
 
       return [];
     }
   }, [pushLog]);
 
-  /*
-   * Initial application startup.
-   */
-  useEffect(() => {
-    refreshTargets().then((rows) => {
-      if (rows.length && !activeId) {
-        setActiveId(rows[0].id);
-      }
-    });
+  // ------------------------------------------------------------
+  // INITIAL APPLICATION STARTUP
+  // ------------------------------------------------------------
 
-    pushLog(
-      "info",
-      "PENTIII initialized — connecting to https://pentiii.onrender.com"
-    );
-  }, [refreshTargets, activeId, pushLog]);
+  useEffect(() => {
+    let mounted = true;
+
+    const initialize = async () => {
+      const rows = await refreshTargets();
+
+      if (!mounted) {
+        return;
+      }
+
+      if (rows.length > 0) {
+        setActiveId((currentId) => {
+          if (currentId !== null) {
+            return currentId;
+          }
+
+          return rows[0].id;
+        });
+      }
+
+      pushLog(
+        "info",
+        "PENTIII initialized — connecting to https://pentiii.onrender.com"
+      );
+    };
+
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
+  }, [refreshTargets, pushLog]);
+
+  // ------------------------------------------------------------
+  // ACTIVE TARGET
+  // ------------------------------------------------------------
 
   const activeTarget =
-    targets.find((t) => t.id === activeId) || null;
+    targets.find((target) => target.id === activeId) || null;
+
+  // ------------------------------------------------------------
+  // FINDINGS
+  // ------------------------------------------------------------
 
   const refreshFindings = useCallback(async () => {
     if (!activeId) {
@@ -180,17 +230,19 @@ export default function App() {
 
     try {
       const rows = await api.listFindings(activeId);
-      setFindings(rows);
-    } catch {
+
+      setFindings(
+        Array.isArray(rows) ? rows : []
+      );
+    } catch (error) {
+      console.error("Failed to load findings:", error);
       setFindings([]);
     }
   }, [activeId]);
 
-  /*
-   * Auto-detected findings from the SQLi engine's scan history
-   * are separate from manually-created findings.
-   */
-  const [autoFindings, setAutoFindings] = useState([]);
+  // ------------------------------------------------------------
+  // AUTOMATIC FINDINGS
+  // ------------------------------------------------------------
 
   const refreshAutoFindings = useCallback(async () => {
     if (!activeId) {
@@ -200,24 +252,49 @@ export default function App() {
 
     try {
       const rows = await api.listAutoFindings(activeId);
-      setAutoFindings(rows);
-    } catch {
+
+      setAutoFindings(
+        Array.isArray(rows) ? rows : []
+      );
+    } catch (error) {
+      console.error(
+        "Failed to load automatic findings:",
+        error
+      );
+
       setAutoFindings([]);
     }
   }, [activeId]);
+
+  // ------------------------------------------------------------
+  // ACTIVE TARGET DATA REFRESH
+  // ------------------------------------------------------------
 
   useEffect(() => {
     refreshFindings();
     refreshAutoFindings();
 
-    if (activeId) {
-      api
-        .getScans(activeId)
-        .then((s) => setTotalScans(s.length))
-        .catch(() => setTotalScans(0));
-    } else {
+    if (!activeId) {
       setTotalScans(0);
+      setScanProgress([]);
+      return;
     }
+
+    api
+      .getScans(activeId)
+      .then((scans) => {
+        setTotalScans(
+          Array.isArray(scans) ? scans.length : 0
+        );
+      })
+      .catch((error) => {
+        console.error(
+          "Failed to load scan history:",
+          error
+        );
+
+        setTotalScans(0);
+      });
 
     setScanProgress([]);
   }, [
@@ -226,15 +303,84 @@ export default function App() {
     refreshAutoFindings,
   ]);
 
-  function setScanDataForTarget(targetId, key, value) {
-    setScanDataState((prev) => ({
-      ...prev,
+  // ------------------------------------------------------------
+  // SCAN DATA
+  // ------------------------------------------------------------
+
+  function setScanDataForTarget(
+    targetId,
+    key,
+    value
+  ) {
+    setScanDataState((previous) => ({
+      ...previous,
+
       [targetId]: {
-        ...(prev[targetId] || {}),
+        ...(previous[targetId] || {}),
         [key]: value,
       },
     }));
   }
+
+  function setScanData(key, value) {
+    if (!activeId) {
+      return;
+    }
+
+    setScanDataForTarget(
+      activeId,
+      key,
+      value
+    );
+  }
+
+  const currentScanData =
+    scanData[activeId] || {};
+
+  // ------------------------------------------------------------
+  // SCAN COUNTER
+  // ------------------------------------------------------------
+
+  function bumpScans(amount = 1) {
+    const safeAmount =
+      Number.isFinite(amount) && amount > 0
+        ? amount
+        : 0;
+
+    setTotalScans(
+      (current) => current + safeAmount
+    );
+  }
+
+  // ------------------------------------------------------------
+  // FINDING SEED
+  // ------------------------------------------------------------
+
+  function seedFinding(finding) {
+    setFindingSeed(finding);
+    setTab("findings");
+  }
+
+  const clearFindingSeed = useCallback(() => {
+    setFindingSeed(null);
+  }, []);
+
+  // ------------------------------------------------------------
+  // SQLI SEED
+  // ------------------------------------------------------------
+
+  function seedSqli(scan) {
+    setSqliSeed(scan);
+    setTab("sqli");
+  }
+
+  const clearSqliSeed = useCallback(() => {
+    setSqliSeed(null);
+  }, []);
+
+  // ------------------------------------------------------------
+  // FULL SCAN
+  // ------------------------------------------------------------
 
   async function runFullScan() {
     if (!activeTarget || fullScanRunning) {
@@ -271,15 +417,25 @@ export default function App() {
 
     setScanProgress(stages);
 
-    const update = (i, status, detail) => {
-      stages = stages.map((s, idx) =>
-        idx === i
-          ? {
-              ...s,
-              status,
-              ...(detail ? { detail } : {}),
-            }
-          : s
+    const updateStage = (
+      index,
+      status,
+      detail = null
+    ) => {
+      stages = stages.map(
+        (stage, stageIndex) => {
+          if (stageIndex !== index) {
+            return stage;
+          }
+
+          return {
+            ...stage,
+            status,
+            ...(detail
+              ? { detail }
+              : {}),
+          };
+        }
       );
 
       setScanProgress(stages);
@@ -287,18 +443,20 @@ export default function App() {
 
     pushLog(
       "run",
-      `full scan started → ${target.url}`
+      "Full scan started -> " + target.url
     );
 
     let scansSaved = 0;
 
     try {
-      /*
-       * Stage 1 — HTTP Analysis
-       */
-      update(0, "Running");
+      // --------------------------------------------------------
+      // STAGE 1: HTTP ANALYSIS
+      // --------------------------------------------------------
 
-      const httpResult = await api.scanHttp(targetId);
+      updateStage(0, "Running");
+
+      const httpResult =
+        await api.scanHttp(targetId);
 
       setScanDataForTarget(
         targetId,
@@ -306,29 +464,46 @@ export default function App() {
         httpResult
       );
 
-      scansSaved++;
+      scansSaved += 1;
 
-      update(
+      const httpOk =
+        httpResult &&
+        httpResult.ok === true;
+
+      const httpFlags = Array.isArray(
+        httpResult?.flags
+      )
+        ? httpResult.flags.length
+        : 0;
+
+      updateStage(
         0,
-        httpResult.ok ? "Complete" : "Failed",
-        httpResult.ok
-          ? `status ${httpResult.status_code}, ${httpResult.flags.length} flag(s)`
-          : httpResult.error
+        httpOk ? "Complete" : "Failed",
+        httpOk
+          ? "status " +
+              httpResult.status_code +
+              ", " +
+              httpFlags +
+              " flag(s)"
+          : httpResult?.error ||
+              "HTTP analysis failed"
       );
 
       pushLog(
-        httpResult.ok ? "ok" : "fail",
-        `HTTP analysis: ${
-          httpResult.ok
-            ? `status ${httpResult.status_code}`
-            : httpResult.error
-        }`
+        httpOk ? "ok" : "fail",
+        httpOk
+          ? "HTTP analysis: status " +
+              httpResult.status_code
+          : "HTTP analysis failed: " +
+              (httpResult?.error ||
+                "Unknown error")
       );
 
-      /*
-       * Stage 2 — Endpoint Discovery
-       */
-      update(1, "Running");
+      // --------------------------------------------------------
+      // STAGE 2: ENDPOINT DISCOVERY
+      // --------------------------------------------------------
+
+      updateStage(1, "Running");
 
       const endpointResult =
         await api.scanEndpoints(targetId);
@@ -339,25 +514,48 @@ export default function App() {
         endpointResult
       );
 
-      scansSaved++;
+      scansSaved += 1;
 
-      update(
+      const foundEndpoints =
+        Array.isArray(
+          endpointResult?.found
+        )
+          ? endpointResult.found
+          : [];
+
+      const checkedEndpoints =
+        Number.isFinite(
+          endpointResult?.checked
+        )
+          ? endpointResult.checked
+          : 0;
+
+      updateStage(
         1,
         "Complete",
-        `${endpointResult.found.length} of ${endpointResult.checked} responded`
+        foundEndpoints.length +
+          " of " +
+          checkedEndpoints +
+          " responded"
       );
 
       pushLog(
         "ok",
-        `endpoint discovery: ${endpointResult.found.length} of ${endpointResult.checked} responded`
+        "Endpoint discovery: " +
+          foundEndpoints.length +
+          " of " +
+          checkedEndpoints +
+          " responded"
       );
 
-      /*
-       * Stage 3 — JavaScript Analysis
-       */
-      update(2, "Running");
+      // --------------------------------------------------------
+      // STAGE 3: JAVASCRIPT ANALYSIS
+      // --------------------------------------------------------
 
-      const jsResult = await api.scanJs(targetId);
+      updateStage(2, "Running");
+
+      const jsResult =
+        await api.scanJs(targetId);
 
       setScanDataForTarget(
         targetId,
@@ -365,65 +563,119 @@ export default function App() {
         jsResult
       );
 
-      scansSaved++;
+      scansSaved += 1;
 
-      update(
+      const jsOk =
+        jsResult &&
+        jsResult.ok === true;
+
+      const scriptCount =
+        Number.isFinite(
+          jsResult?.scripts_found
+        )
+          ? jsResult.scripts_found
+          : 0;
+
+      const jsEndpoints =
+        Array.isArray(
+          jsResult?.unique_endpoints
+        )
+          ? jsResult.unique_endpoints
+          : [];
+
+      updateStage(
         2,
-        jsResult.ok ? "Complete" : "Failed",
-        jsResult.ok
-          ? `${jsResult.scripts_found} script(s)`
-          : jsResult.error
+        jsOk ? "Complete" : "Failed",
+        jsOk
+          ? scriptCount +
+              " script(s)"
+          : jsResult?.error ||
+              "JavaScript analysis failed"
       );
 
       pushLog(
-        jsResult.ok ? "ok" : "fail",
-        `JS analysis: ${
-          jsResult.ok
-            ? `${jsResult.scripts_found} script(s), ${jsResult.unique_endpoints.length} endpoint-like string(s)`
-            : jsResult.error
-        }`
+        jsOk ? "ok" : "fail",
+        jsOk
+          ? "JS analysis: " +
+              scriptCount +
+              " script(s), " +
+              jsEndpoints.length +
+              " endpoint-like string(s)"
+          : "JS analysis failed: " +
+              (jsResult?.error ||
+                "Unknown error")
       );
 
-      /*
-       * Stage 4 — Endpoint Collection
-       */
-      update(3, "Running");
+      // --------------------------------------------------------
+      // STAGE 4: ENDPOINT COLLECTION
+      // --------------------------------------------------------
 
-      const collection = buildCollection(
-        target.url,
-        endpointResult,
-        jsResult.ok ? jsResult : null
-      );
+      updateStage(3, "Running");
+
+      const collection =
+        buildCollection(
+          target.url,
+          endpointResult,
+          jsOk ? jsResult : null
+        );
+
+      const safeCollection =
+        collection || {
+          endpoints: [],
+          total_endpoints: 0,
+          parameterized_endpoints: 0,
+        };
+
+      const collectedEndpoints =
+        Array.isArray(
+          safeCollection.endpoints
+        )
+          ? safeCollection.endpoints
+          : [];
 
       setScanDataForTarget(
         targetId,
         "collection",
-        collection
+        safeCollection
       );
 
-      update(
+      updateStage(
         3,
         "Complete",
-        `${collection.parameterized_endpoints} parameterized endpoint(s)`
+        (safeCollection.parameterized_endpoints ||
+          0) +
+          " parameterized endpoint(s)"
       );
 
       pushLog(
         "ok",
-        `endpoint collection: ${collection.total_endpoints} total, ${collection.parameterized_endpoints} parameterized`
+        "Endpoint collection: " +
+          (safeCollection.total_endpoints ||
+            collectedEndpoints.length) +
+          " total, " +
+          (safeCollection.parameterized_endpoints ||
+            0) +
+          " parameterized"
       );
 
-      /*
-       * Stage 5 — SQL Injection Testing
-       */
-      update(4, "Running");
+      // --------------------------------------------------------
+      // STAGE 5: SQL INJECTION TESTING
+      // --------------------------------------------------------
 
-      const paramEndpoints =
-        collection.endpoints.filter(
-          (e) => e.has_parameters
+      updateStage(4, "Running");
+
+      const parameterizedEndpoints =
+        collectedEndpoints.filter(
+          (endpoint) =>
+            endpoint &&
+            endpoint.has_parameters
         );
 
-      if (paramEndpoints.length === 0) {
-        update(
+      if (
+        parameterizedEndpoints.length ===
+        0
+      ) {
+        updateStage(
           4,
           "Skipped",
           "no parameterized endpoints found"
@@ -431,31 +683,52 @@ export default function App() {
 
         pushLog(
           "info",
-          "SQL injection testing skipped — no parameterized endpoints discovered"
+          "SQL injection testing skipped - no parameterized endpoints discovered"
         );
       } else {
         const sqliResults = [];
 
-        for (const ep of paramEndpoints) {
-          for (const param of ep.parameters) {
+        for (
+          const endpoint of parameterizedEndpoints
+        ) {
+          const parameters =
+            Array.isArray(
+              endpoint.parameters
+            )
+              ? endpoint.parameters
+              : [];
+
+          for (
+            const parameter of parameters
+          ) {
             let originalValue = "1";
 
             try {
-              originalValue =
-                new URL(ep.url).searchParams.get(param) ??
-                "1";
+              const parsedUrl =
+                new URL(endpoint.url);
+
+              const value =
+                parsedUrl.searchParams.get(
+                  parameter
+                );
+
+              if (value !== null) {
+                originalValue = value;
+              }
             } catch {
-              // Fall back to default value.
+              originalValue = "1";
             }
 
             try {
-              const r =
+              const result =
                 await api.scanSqliAdvanced(
                   targetId,
                   {
-                    url: ep.url,
-                    parameter: param,
-                    original_value: originalValue,
+                    url: endpoint.url,
+                    parameter,
+                    original_value:
+                      originalValue,
+
                     enabled: {
                       error: true,
                       boolean: false,
@@ -465,27 +738,55 @@ export default function App() {
                   }
                 );
 
+              const safeResult =
+                result || {};
+
               sqliResults.push({
-                url: ep.url,
-                parameter: param,
-                ...r,
+                url: endpoint.url,
+                parameter,
+                ...safeResult,
               });
 
-              scansSaved++;
+              scansSaved += 1;
 
-              if (r.ok && r.vulnerable) {
+              if (
+                safeResult.ok &&
+                safeResult.vulnerable
+              ) {
                 pushLog(
                   "fail",
-                  `SQLi: possible injection on "${param}" at ${ep.url} (confidence: ${r.confidence})`
+                  'SQLi: possible injection on "' +
+                    parameter +
+                    '" at ' +
+                    endpoint.url +
+                    " (confidence: " +
+                    (safeResult.confidence ||
+                      "unknown") +
+                    ")"
                 );
               }
-            } catch (e) {
+            } catch (error) {
+              const errorMessage =
+                error &&
+                error.message
+                  ? error.message
+                  : "SQLi request failed";
+
               sqliResults.push({
-                url: ep.url,
-                parameter: param,
+                url: endpoint.url,
+                parameter,
                 ok: false,
-                error: e.message,
+                vulnerable: false,
+                error: errorMessage,
               });
+
+              pushLog(
+                "fail",
+                "SQLi test failed for " +
+                  parameter +
+                  ": " +
+                  errorMessage
+              );
             }
           }
         }
@@ -496,89 +797,71 @@ export default function App() {
           sqliResults
         );
 
-        const vulnCount =
+        const vulnerableCount =
           sqliResults.filter(
-            (r) => r.ok && r.vulnerable
+            (result) =>
+              result &&
+              result.ok &&
+              result.vulnerable
           ).length;
 
-        update(
+        updateStage(
           4,
           "Complete",
-          `${sqliResults.length} parameter(s) tested, ${vulnCount} flagged`
+          sqliResults.length +
+            " parameter(s) tested, " +
+            vulnerableCount +
+            " flagged"
         );
 
         pushLog(
-          vulnCount ? "fail" : "ok",
-          `SQL injection testing complete: ${sqliResults.length} parameter(s) tested, ${vulnCount} flagged`
+          vulnerableCount > 0
+            ? "fail"
+            : "ok",
+          "SQL injection testing complete: " +
+            sqliResults.length +
+            " parameter(s) tested, " +
+            vulnerableCount +
+            " flagged"
         );
       }
 
+      // --------------------------------------------------------
+      // FINISH
+      // --------------------------------------------------------
+
       bumpScans(scansSaved);
 
-      refreshTargets();
-      refreshFindings();
-      refreshAutoFindings();
+      await refreshTargets();
+      await refreshFindings();
+      await refreshAutoFindings();
 
       pushLog(
         "ok",
-        `full scan complete for ${target.name}`
+        "Full scan complete for " +
+          target.name
       );
-    } catch (e) {
+    } catch (error) {
+      const errorMessage =
+        error && error.message
+          ? error.message
+          : "Unknown full scan error";
+
       pushLog(
         "fail",
-        `full scan error: ${e.message}`
+        "Full scan error: " +
+          errorMessage
       );
 
-      refreshAutoFindings();
+      await refreshAutoFindings();
     } finally {
       setFullScanRunning(false);
     }
   }
 
-  function seedFinding(f) {
-    setFindingSeed(f);
-    setTab("findings");
-  }
-
-  const clearFindingSeed = useCallback(
-    () => setFindingSeed(null),
-    []
-  );
-
-  const clearSqliSeed = useCallback(
-    () => setSqliSeed(null),
-    []
-  );
-
-  function bumpScans(n = 1) {
-    setTotalScans((t) => t + n);
-  }
-
-  /*
-   * Scan results are keyed per target so switching tabs
-   * or targets does not discard previous scan results.
-   */
-  function setScanData(key, value) {
-    if (!activeId) {
-      return;
-    }
-
-    setScanDataState((prev) => ({
-      ...prev,
-      [activeId]: {
-        ...(prev[activeId] || {}),
-        [key]: value,
-      },
-    }));
-  }
-
-  const currentScanData =
-    scanData[activeId] || {};
-
-  function seedSqli(s) {
-    setSqliSeed(s);
-    setTab("sqli");
-  }
+  // ------------------------------------------------------------
+  // DASHBOARD METRICS
+  // ------------------------------------------------------------
 
   const sessionMinutes = Math.floor(
     (Date.now() - startedAt) / 60000
@@ -586,27 +869,36 @@ export default function App() {
 
   const findingsHigh =
     findings.filter(
-      (f) => f.severity === "High"
+      (finding) =>
+        finding.severity === "High"
     ).length;
 
   const findingsMed =
     findings.filter(
-      (f) => f.severity === "Medium"
+      (finding) =>
+        finding.severity === "Medium"
     ).length;
 
   const findingsLow =
     findings.filter(
-      (f) => f.severity === "Low"
+      (finding) =>
+        finding.severity === "Low"
     ).length;
+
+  // ------------------------------------------------------------
+  // PAGE CONTEXT
+  // ------------------------------------------------------------
 
   const baseCtx = {
     targets,
+
     activeId,
     activeTarget,
     setActiveId,
 
     findings,
     refreshFindings,
+
     findingSeed,
     clearFindingSeed,
     seedFinding,
@@ -620,6 +912,7 @@ export default function App() {
 
     api,
     apiDown,
+
     totalScans,
     refreshTargets,
     bumpScans,
@@ -634,16 +927,11 @@ export default function App() {
     setFullScanRunning,
     setScanProgress,
 
-    showAddTarget: () =>
-      setTab("targets"),
+    showAddTarget: () => {
+      setTab("targets");
+    },
   };
 
-  /*
-   * Every page gets `log` as a callable logger.
-   *
-   * Dashboard additionally receives the raw log array
-   * so it can render the activity feed.
-   */
   const pageCtx = {
     ...baseCtx,
     log: pushLog,
@@ -653,6 +941,10 @@ export default function App() {
     ...baseCtx,
     log,
   };
+
+  // ------------------------------------------------------------
+  // RENDER
+  // ------------------------------------------------------------
 
   return (
     <>
@@ -670,27 +962,35 @@ export default function App() {
           height: "100vh",
           background: C.bg,
           overflow: "hidden",
-          fontFamily: "var(--font-display)",
+          fontFamily:
+            "var(--font-display)",
         }}
       >
-        {/* TOP BAR */}
+        {/* ====================================================
+            TOP BAR
+        ==================================================== */}
+
         <div
           style={{
             display: "flex",
             alignItems: "center",
             height: 34,
             background: C.panel,
-            borderBottom: `1px solid ${C.border}`,
+            borderBottom:
+              "1px solid " + C.border,
             flexShrink: 0,
           }}
         >
+          {/* BRAND */}
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 8,
               padding: "0 14px",
-              borderRight: `1px solid ${C.border}`,
+              borderRight:
+                "1px solid " + C.border,
               height: "100%",
             }}
           >
@@ -727,13 +1027,16 @@ export default function App() {
             </span>
           </div>
 
+          {/* TARGET SELECTOR */}
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: 6,
               padding: "0 14px",
-              borderRight: `1px solid ${C.border}`,
+              borderRight:
+                "1px solid " + C.border,
               height: "100%",
             }}
           >
@@ -748,13 +1051,16 @@ export default function App() {
 
             <select
               value={activeId || ""}
-              onChange={(e) =>
+              onChange={(event) => {
+                const value =
+                  event.target.value;
+
                 setActiveId(
-                  e.target.value
-                    ? Number(e.target.value)
+                  value
+                    ? Number(value)
                     : null
-                )
-              }
+                );
+              }}
               aria-label="Active target"
               style={{
                 maxWidth: 230,
@@ -762,11 +1068,12 @@ export default function App() {
                 border: "none",
                 color: C.fgMid,
                 fontSize: 11.5,
-                fontFamily: "var(--font-mono)",
+                fontFamily:
+                  "var(--font-mono)",
                 outline: "none",
               }}
             >
-              {!targets.length && (
+              {targets.length === 0 && (
                 <option value="">
                   none selected
                 </option>
@@ -783,7 +1090,13 @@ export default function App() {
             </select>
           </div>
 
-          <div style={{ flex: 1 }} />
+          <div
+            style={{
+              flex: 1,
+            }}
+          />
+
+          {/* STATUS */}
 
           <div
             style={{
@@ -796,7 +1109,9 @@ export default function App() {
           >
             <div
               className={
-                apiDown ? "" : "pulse-dot"
+                apiDown
+                  ? ""
+                  : "pulse-dot"
               }
               style={{
                 width: 6,
@@ -817,7 +1132,8 @@ export default function App() {
               {apiDown
                 ? "backend unreachable"
                 : activeTarget
-                ? `${activeTarget.url} · active`
+                ? activeTarget.url +
+                  " · active"
                 : "no target"}
             </span>
 
@@ -825,8 +1141,11 @@ export default function App() {
               style={{
                 fontSize: 11,
                 color: C.fgDim,
-                fontFamily: "var(--font-mono)",
-                borderLeft: `1px solid ${C.border}`,
+                fontFamily:
+                  "var(--font-mono)",
+                borderLeft:
+                  "1px solid " +
+                  C.border,
                 paddingLeft: 10,
               }}
             >
@@ -837,7 +1156,9 @@ export default function App() {
               style={{
                 fontSize: 11,
                 color: C.medium,
-                borderLeft: `1px solid ${C.border}`,
+                borderLeft:
+                  "1px solid " +
+                  C.border,
                 paddingLeft: 10,
               }}
             >
@@ -846,7 +1167,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* NAVIGATION TABS */}
+        {/* ====================================================
+            NAVIGATION
+        ==================================================== */}
+
         <div
           className="scrollbar-thin"
           style={{
@@ -854,65 +1178,80 @@ export default function App() {
             alignItems: "stretch",
             height: 32,
             background: C.panelB,
-            borderBottom: `1px solid ${C.border}`,
+            borderBottom:
+              "1px solid " + C.border,
             flexShrink: 0,
             overflowX: "auto",
           }}
         >
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "0 16px",
-                border: "none",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontSize: 12,
-                whiteSpace: "nowrap",
-                background:
-                  tab === t.id
+          {TABS.map((item) => {
+            const selected =
+              tab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setTab(item.id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "0 16px",
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                  background: selected
                     ? C.panelC
                     : "transparent",
-                color:
-                  tab === t.id
+                  color: selected
                     ? C.fg
                     : C.fgMid,
-                borderBottom:
-                  tab === t.id
-                    ? `2px solid ${C.accent}`
+                  borderBottom: selected
+                    ? "2px solid " +
+                      C.accent
                     : "2px solid transparent",
-                borderRight: `1px solid ${C.border}`,
-                fontWeight:
-                  tab === t.id ? 600 : 400,
-              }}
-            >
-              {t.label}
+                  borderRight:
+                    "1px solid " +
+                    C.border,
+                  fontWeight: selected
+                    ? 600
+                    : 400,
+                }}
+              >
+                {item.label}
 
-              {t.id === "findings" &&
-                findings.length > 0 && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: C.critical,
-                      background:
-                        "rgba(224,85,85,0.12)",
-                      borderRadius: 3,
-                      padding: "1px 5px",
-                    }}
-                  >
-                    {findings.length}
-                  </span>
-                )}
-            </button>
-          ))}
+                {item.id ===
+                  "findings" &&
+                  findings.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color:
+                          C.critical,
+                        background:
+                          "rgba(224,85,85,0.12)",
+                        borderRadius: 3,
+                        padding:
+                          "1px 5px",
+                      }}
+                    >
+                      {findings.length}
+                    </span>
+                  )}
+              </button>
+            );
+          })}
         </div>
 
-        {/* API STATUS BANNER */}
+        {/* ====================================================
+            API STATUS BANNER
+        ==================================================== */}
+
         {apiDown && (
           <div
             style={{
@@ -931,12 +1270,15 @@ export default function App() {
             <strong>
               https://pentiii.onrender.com
             </strong>
-            . Check the backend status, API key,
-            and CORS configuration.
+            . Check the backend status,
+            API key, and CORS configuration.
           </div>
         )}
 
-        {/* MAIN CONTENT */}
+        {/* ====================================================
+            MAIN CONTENT
+        ==================================================== */}
+
         <div
           className="scrollbar-thin"
           style={{
@@ -956,7 +1298,10 @@ export default function App() {
           />
         </div>
 
-        {/* STATUS BAR */}
+        {/* ====================================================
+            STATUS BAR
+        ==================================================== */}
+
         <div
           style={{
             display: "flex",
@@ -964,7 +1309,8 @@ export default function App() {
             gap: 0,
             height: 22,
             background: C.panelB,
-            borderTop: `1px solid ${C.border}`,
+            borderTop:
+              "1px solid " + C.border,
             flexShrink: 0,
           }}
         >
@@ -973,21 +1319,34 @@ export default function App() {
               ? activeTarget.url
               : "no target",
 
-            `Session: ${sessionMinutes}m`,
+            "Session: " +
+              sessionMinutes +
+              "m",
 
-            `Scans: ${totalScans}`,
+            "Scans: " +
+              totalScans,
 
-            `Findings: ${findings.length} (${findingsHigh}H · ${findingsMed}M · ${findingsLow}L)`,
+            "Findings: " +
+              findings.length +
+              " (" +
+              findingsHigh +
+              "H · " +
+              findingsMed +
+              "M · " +
+              findingsLow +
+              "L)",
 
-            `Mode: Authorized assessment`,
-          ].map((s, i) => (
+            "Mode: Authorized assessment",
+          ].map((text, index) => (
             <span
-              key={i}
+              key={index}
               style={{
                 fontSize: 10.5,
                 color: C.fgDim,
                 padding: "0 10px",
-                borderRight: `1px solid ${C.border}`,
+                borderRight:
+                  "1px solid " +
+                  C.border,
                 fontFamily:
                   "var(--font-mono)",
                 height: "100%",
@@ -995,11 +1354,15 @@ export default function App() {
                 alignItems: "center",
               }}
             >
-              {s}
+              {text}
             </span>
           ))}
 
-          <div style={{ flex: 1 }} />
+          <div
+            style={{
+              flex: 1,
+            }}
+          />
 
           <span
             style={{
@@ -1010,17 +1373,20 @@ export default function App() {
               padding: "0 10px",
               fontFamily:
                 "var(--font-mono)",
-              borderLeft: `1px solid ${C.border}`,
+              borderLeft:
+                "1px solid " +
+                C.border,
               height: "100%",
               display: "flex",
               alignItems: "center",
             }}
           >
-            {apiDown ? "Offline" : "Ready"}
+            {apiDown
+              ? "Offline"
+              : "Ready"}
           </span>
         </div>
       </div>
     </>
   );
 }
-```
