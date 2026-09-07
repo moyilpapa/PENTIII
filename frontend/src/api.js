@@ -1,4 +1,4 @@
-const BASE = "http://localhost:5050/api";
+const BASE = "https://pentiii.onrender.com";
 
 // The backend requires a shared API key on every /api/* route (see
 // backend/security.py). Set it once per browser via localStorage:
