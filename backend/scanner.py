@@ -17,6 +17,7 @@ import re
 import time
 import uuid
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
@@ -34,6 +35,12 @@ REQUEST_TIMEOUT = 20
 MAX_JS_FILES = 40          # cap on how many linked JS files we download per scan (not on results found)
 MAX_CRAWL_LINKS = 100      # bound same-origin HTML discovery; wordlist results remain complete
 RATE_LIMIT_DELAY = 0.0     # seconds to sleep between requests; 0 = off, tune up for noisy targets
+ENDPOINT_DISCOVERY_WORKERS = 15  # concurrent requests during wordlist fuzzing. Bounded
+                                 # deliberately -- this is a thread pool, not "fire all
+                                 # candidates at once". Keeps behavior close to a human
+                                 # clicking through paths quickly rather than a burst that
+                                 # looks like a DoS to the target or its WAF. RATE_LIMIT_DELAY
+                                 # above still applies per-request if you need it slower.
 
 HEADERS = {"User-Agent": "WebAppSecurityTester/1.0 (authorized-testing-only)"}
 
@@ -289,8 +296,11 @@ def discover_endpoints(url: str) -> dict:
     candidates = [(path, "wordlist") for path in ENDPOINT_WORDLIST]
     seen_paths = {path for path, _ in candidates}
     candidates.extend((path, "html-link") for path in dynamic_paths if path not in seen_paths)
-    results = []
-    for path, source in candidates:
+
+    def _check_one(path: str, source: str) -> dict:
+        """Same per-path logic as the old sequential loop, unchanged --
+        only how it's dispatched (thread pool vs. a plain for-loop) changed.
+        Every classification rule and response field below is identical."""
         target = base + path
         try:
             resp = requests.get(target, headers=HEADERS, timeout=REQUEST_TIMEOUT, allow_redirects=False)
@@ -320,7 +330,7 @@ def discover_endpoints(url: str) -> dict:
                 assessment = "No accessible endpoint confirmed by this request."
                 next_checks = "Validate the response manually if the path is expected to exist."
                 classification = "Not Confirmed"
-            results.append({
+            result = {
                 "path": path,
                 "source": source,
                 "status_code": resp.status_code,
@@ -336,11 +346,38 @@ def discover_endpoints(url: str) -> dict:
                 "classification": classification,
                 "assessment": assessment,
                 "next_checks": next_checks,
-            })
+            }
         except requests.exceptions.RequestException as e:
-            results.append({"path": path, "source": source, "status_code": None, "exists": False, "error": str(e), "url": target})
+            # A single unreachable/timed-out path must not take down the whole
+            # scan -- caught here exactly like it was in the old sequential
+            # try/except, just now inside a worker instead of the main loop.
+            result = {"path": path, "source": source, "status_code": None, "exists": False, "error": str(e), "url": target}
         if RATE_LIMIT_DELAY:
             time.sleep(RATE_LIMIT_DELAY)
+        return result
+
+    # Fan out with a bounded thread pool -- this is the fix for the
+    # sequential-loop bottleneck (worst case was ~82 paths x 20s timeout
+    # each, back to back). Concurrency is capped at ENDPOINT_DISCOVERY_WORKERS
+    # rather than launched all at once, so a slow/flaky target collapses the
+    # scan time without the request burst looking like a DoS against it.
+    #
+    # Every actual HTTP connection still passes through install_connection_guard(),
+    # which patches socket.create_connection() process-wide -- so the SSRF/
+    # private-target check applies per-connection regardless of which worker
+    # thread opened it. Nothing about the safety guarantees changes here.
+    results_by_path = {}
+    with ThreadPoolExecutor(max_workers=ENDPOINT_DISCOVERY_WORKERS) as pool:
+        futures = {pool.submit(_check_one, path, source): path for path, source in candidates}
+        for future in as_completed(futures):
+            path = futures[future]
+            results_by_path[path] = future.result()
+
+    # as_completed() yields whichever request finishes first, so results come
+    # back scrambled relative to the wordlist -- restore original candidate
+    # order here so the frontend's category grouping / diffing keeps working
+    # unmodified.
+    results = [results_by_path[path] for path, _source in candidates]
 
     found = [r for r in results if r.get("exists")]
     return {
