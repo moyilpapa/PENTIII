@@ -6,8 +6,7 @@ const DEFAULT_ENABLED = { error: true, boolean: true, time: true, union: true };
 const DEFAULT_CONFIG = { request_timeout: 8, max_requests: 25, verification_attempts: 2, timing_threshold: 3.0, rate_limit_delay: 0 };
 
 function QuickTest({ ctx }) {
-  const { activeTarget, api, log, seedFinding, bumpScans, scanData, setScanData } = ctx;
-  const [param, setParam] = useState("id");
+  const { activeTarget, api, log, seedFinding, bumpScans, scanData, setScanData, refreshAutoFindings } = ctx;
   const [running, setRunning] = useState(false);
   const [sel, setSel] = useState(null);
   const history = scanData.sqliHistory || [];
@@ -36,6 +35,7 @@ function QuickTest({ ctx }) {
       if (!r.ok) log("fail", r.error);
       else if (r.vulnerable) log("fail", `possible SQL injection on "${param}" — ${r.matched_signatures.length} signature(s) matched`);
       else log("ok", `no error-based signatures found on "${param}"`);
+      refreshAutoFindings();
     } catch (e) {
       log("fail", e.message);
     } finally {
@@ -175,7 +175,7 @@ function ConfigRow({ label, value, onChange, step, min }) {
 }
 
 function AdvancedEngine({ ctx }) {
-  const { activeTarget, api, log, seedFinding, sqliSeed, clearSqliSeed, bumpScans, scanData, setScanData } = ctx;
+  const { activeTarget, api, log, seedFinding, sqliSeed, clearSqliSeed, bumpScans, scanData, setScanData, refreshAutoFindings } = ctx;
   const [url, setUrl] = useState(activeTarget.url);
   const [param, setParam] = useState("id");
   const [originalValue, setOriginalValue] = useState("1");
@@ -270,6 +270,7 @@ function AdvancedEngine({ ctx }) {
         log("fail", r.error);
         setScanData("sqliAdvancedStages", r.stages?.length ? r.stages : [{ stage: "Baseline Request", status: "Failed" }]);
       }
+      refreshAutoFindings();
     } catch (e) {
       log("fail", e.message);
     } finally {
