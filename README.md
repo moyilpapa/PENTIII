@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Pent III — Web Application Security Tester
 
 A beginner-scope security assessment tool: Flask JSON API backend + React (Vite + Tailwind) frontend.
@@ -254,7 +253,3 @@ hit, and that's a decision worth making explicitly rather than having it happen 
 
 Verified end-to-end against a real vulnerable Flask app: sqlmap correctly identified SQLite
 error-based injection, extracted the exact payload and DBMS, in ~6 requests.
-=======
-# PENTIII
-A web-based security testing platform for discovering and analyzing common web application vulnerabilities, with a focus on automated JavaScript endpoint discovery and SQL injection testing.
->>>>>>> 2fa2016ec46ec2c1ba60c7b3b5750da4315dce71
