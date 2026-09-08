@@ -123,8 +123,8 @@ to change the port.
 
 ## Security controls (read this before pointing it at anything)
 
-This tool sends real, unauthenticated-by-the-target HTTP requests (and, optionally, shells out to
-sqlmap) at whatever URL you give it. A few guardrails are built in and configured via environment
+This tool sends real, unauthenticated-by-the-target HTTP requests at whatever URL you give it.
+A few guardrails are built in and configured via environment
 variables when you start the backend:
 
 | Env var | Default | Purpose |
@@ -134,9 +134,8 @@ variables when you start the backend:
 | `ALLOW_NO_AUTH` | off | Disables the API key check entirely. Only for a machine you fully trust and don't expose beyond localhost — refused outright at startup if combined with a non-loopback `HOST` (see below). |
 | `ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated CORS allowlist. The API is never `Access-Control-Allow-Origin: *`. If you deploy the frontend anywhere other than localhost, update this to that origin or the API will (correctly) reject it. |
 | `ALLOW_PRIVATE_TARGETS` | off | By default, any target/URL that resolves to a private, loopback, link-local, or cloud-metadata address (`10.x`, `127.x`, `169.254.169.254`, etc.) is refused, to stop the API being used as an SSRF proxy against its own host/network. Set this only for an authorized internal engagement where you've deliberately decided that's in scope. |
-| `ENABLE_SQLMAP` | off | The `/api/scan/sqli-sqlmap` route (real sqlmap subprocess) is disabled until you explicitly opt in — it's a much bigger blast radius than the rest of the app. |
 | `RATE_LIMIT_PER_MINUTE` | `120` | Max requests per client IP per minute on non-scan routes. Applies pre-auth too (by IP), so it also throttles someone guessing at an API key. |
-| `RATE_LIMIT_SCAN_PER_MINUTE` | `20` | Lower per-IP limit specifically for `/api/scan/...` routes, since each one triggers real outbound HTTP (and optionally sqlmap). |
+| `RATE_LIMIT_SCAN_PER_MINUTE` | `20` | Lower per-IP limit specifically for `/api/scan/...` routes, since each one triggers real outbound HTTP. |
 | `RATE_LIMIT_DISABLE` | off | Turns rate limiting off entirely. The limiter is in-process/in-memory (no extra service), so it doesn't share state across multiple worker processes — disable it and rate-limit at a reverse proxy instead if you run more than one worker. |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | *(unset)* | Set both to terminate HTTPS directly in this Flask process (fine for a small deployment). Leave unset to stay on plain HTTP, as before — a reverse proxy terminating TLS in front is equally valid and more common for anything beyond casual use. |
 | `HOST` | `127.0.0.1` | Interface Flask binds to. Everything above is designed around a loopback-only bind. Setting this to anything else (`0.0.0.0`, a LAN/public IP) is checked at startup: it refuses to start at all if combined with `ALLOW_NO_AUTH=1`, `FLASK_DEBUG=1` (the Werkzeug debugger is remote code execution if reachable), or no API key; otherwise it prints a one-time warning about what a non-loopback bind still doesn't give you (see "Deploying beyond localhost" below). |
@@ -159,11 +158,10 @@ if you also handle what it doesn't cover on its own:
 - **Rate limiting is per-IP and in-process by default** (`RATE_LIMIT_PER_MINUTE` /
   `RATE_LIMIT_SCAN_PER_MINUTE`). If you run more than one worker process, that state isn't shared
   between them — set `RATE_LIMIT_DISABLE=1` and rate-limit at your reverse proxy instead.
-- Consider whether `ENABLE_SQLMAP` and `ALLOW_PRIVATE_TARGETS` should stay off in the deployed
-  environment even if you use them locally — both widen the blast radius of a leaked key.
+- Consider whether `ALLOW_PRIVATE_TARGETS` should stay off in the deployed
+  environment even if you use it locally — it widens the blast radius of a leaked key.
 
-The SSRF guard runs at two layers for anything this Python process fetches
-directly, and a third for sqlmap specifically:
+The SSRF guard runs at two layers for anything this Python process fetches directly:
 
 1. `assert_safe_target()` validates the URL a caller supplies, up front,
    before a scan starts.
@@ -173,17 +171,9 @@ directly, and a third for sqlmap specifically:
    reached via a redirect, or a hostname whose DNS answer changed between
    the initial check and the real request ("DNS rebinding"). The first
    layer alone can't catch either of those; the two together can.
-3. **sqlmap runs as a separate process**, so layer 2's in-process patch
-   can't reach it — a subprocess has its own interpreter and its own
-   network stack entirely. To cover it, `run_sqlmap()` routes sqlmap
-   through a small local forward proxy (`security.ensure_ssrf_guard_proxy()`),
-   passed via `--proxy`, which applies the same IP check to every
-   connection sqlmap makes for the full duration of the scan — not just
-   its first request. It never terminates or inspects TLS; it only decides
-   whether a given CONNECT/request target is allowed to be reached.
 
 See `backend/tests/test_ssrf_guard.py` for the regression tests covering
-layers 1–2.
+these layers.
 
 **Only ever point this at systems you're authorized to test.** These controls reduce accidental
 and drive-by misuse; they don't turn unauthorized scanning into something that's okay to do.
@@ -228,28 +218,3 @@ This tool will find little to nothing against secure, well-built sites — that'
   content areas.
 - Documentation was updated to reflect the latest UI refinement so the current working state is
   captured in the project record.
-
-## Real sqlmap integration (SQLi Test → "sqlmap" sub-tab)
-
-`sql_engine.py`'s detection is a from-scratch reimplementation of common SQLi techniques —
-useful and self-contained, but inherently thinner than a tool with years of real-world
-refinement. Rather than keep expanding it indefinitely, Pent III can also invoke the actual
-sqlmap tool as a subprocess. This is not sqlmap's source code embedded in this project —
-that would obligate this project's license too, since sqlmap is GPLv2 — it's this app calling
-an independently-installed copy, the same way a scanner might wrap `nmap`.
-
-**Setup** (optional — the rest of Pent III works fully without it):
-
-```bash
-git clone https://github.com/sqlmapproject/sqlmap.git backend/vendor/sqlmap
-```
-
-Or set the `SQLMAP_PATH` environment variable to wherever your `sqlmap.py` lives. If neither
-is present, the "sqlmap" sub-tab returns a clear setup message instead of failing — nothing
-else in the app is affected either way. If you'd rather Pent III fetch it for you the first
-time it's needed, set `SQLMAP_AUTO_INSTALL=1` — this is opt-in on purpose, since it means the
-backend will run a `git clone` of externally-sourced code the first time the sqlmap route is
-hit, and that's a decision worth making explicitly rather than having it happen silently.
-
-Verified end-to-end against a real vulnerable Flask app: sqlmap correctly identified SQLite
-error-based injection, extracted the exact payload and DBMS, in ~6 requests.
