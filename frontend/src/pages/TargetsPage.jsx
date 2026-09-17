@@ -59,8 +59,8 @@ export default function TargetsPage({ ctx }) {
 
       {showForm && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: C.panelB, borderBottom: `1px solid ${C.border}` }}>
-          <TInput placeholder="Target name (e.g. Juice Shop)" value={name} onChange={setName} style={{ width: 220, flex: "none" }} />
-          <TInput placeholder="http://localhost:3000" value={url} onChange={setUrl} style={{ width: 260, flex: "none" }}
+          <TInput placeholder="Target name" value={name} onChange={setName} style={{ width: 220, flex: "none" }} />
+          <TInput placeholder="http://............." value={url} onChange={setUrl} style={{ width: 260, flex: "none" }}
             onKeyDown={(e) => e.key === "Enter" && createTarget()} />
           <TBtn icon="add" label={saving ? "Adding…" : "Add"} accent disabled={saving} onClick={createTarget} />
           {err && <span style={{ fontSize: 11, color: C.critical }}>{err}</span>}
